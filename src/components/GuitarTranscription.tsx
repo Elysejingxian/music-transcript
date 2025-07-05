@@ -36,7 +36,7 @@ E|--x--x--x--x--x--x--x--x--|
   ];
 
   return (
-    <div>
+    <div id="guitar-transcription">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h3 className="text-2xl font-bold text-gray-800">Guitar Transcription</h3>

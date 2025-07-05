@@ -27,7 +27,7 @@ BD |o-------o-------|o-------o-------|
   ];
 
   return (
-    <div>
+    <div id="drum-transcription">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h3 className="text-2xl font-bold text-gray-800">Drum Transcription</h3>

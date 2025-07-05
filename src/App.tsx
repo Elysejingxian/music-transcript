@@ -1,40 +1,100 @@
 import React, { useState } from 'react';
-import { Upload, Play, Pause, Download, Music, Music2, Drum } from 'lucide-react';
+import { Upload, Play, Pause, Download, Music, Music2, CircleDot } from 'lucide-react';
 import AudioUploader from './components/AudioUploader';
 import AudioPlayer from './components/AudioPlayer';
 import PianoTranscription from './components/PianoTranscription';
 import GuitarTranscription from './components/GuitarTranscription';
 import DrumTranscription from './components/DrumTranscription';
+import { exportToPDF, exportToMIDI, exportToMusicXML } from './utils/exportUtils';
+import { transcribeAudio, downloadMIDI, TranscriptionResponse } from './services/api';
 
 function App() {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioUrl, setAudioUrl] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'piano' | 'guitar' | 'drums'>('piano');
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [transcriptionData, setTranscriptionData] = useState<TranscriptionResponse | null>(null);
+  const [error, setError] = useState<string>('');
 
-  const handleFileUpload = (file: File) => {
+  const handleFileUpload = async (file: File) => {
     setAudioFile(file);
     const url = URL.createObjectURL(file);
     setAudioUrl(url);
+    setError('');
     
-    // Simulate transcription process
+    // Start transcription process
     setIsTranscribing(true);
-    setTimeout(() => {
+    try {
+      const result = await transcribeAudio(file);
+      setTranscriptionData(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Transcription failed');
+      console.error('Transcription error:', err);
+    } finally {
       setIsTranscribing(false);
-    }, 3000);
+    }
   };
 
   const songInfo = {
     title: audioFile?.name.replace(/\.[^/.]+$/, "") || "Untitled Song",
-    key: "C Major",
-    tempo: 120,
-    timeSignature: "4/4"
+    key: transcriptionData?.analysis.key || "C Major",
+    tempo: transcriptionData?.analysis.tempo || 120,
+    timeSignature: transcriptionData?.analysis.time_signature || "4/4"
+  };
+
+  const handleExportPDF = async () => {
+    setIsExporting(true);
+    try {
+      const elementId = `${activeTab}-transcription`;
+      const filename = `${songInfo.title}_${activeTab}_transcription`;
+      const success = await exportToPDF(elementId, filename);
+      
+      if (success) {
+        alert('PDF exported successfully!');
+      } else {
+        alert('Failed to export PDF. Please try again.');
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Failed to export PDF. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportMIDI = async () => {
+    if (transcriptionData) {
+      try {
+        const midiBlob = await downloadMIDI(transcriptionData.file_id);
+        const url = URL.createObjectURL(midiBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${songInfo.title}.mid`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        alert('MIDI file downloaded successfully!');
+      } catch (err) {
+        console.error('MIDI download error:', err);
+        alert('Failed to download MIDI file.');
+      }
+    } else {
+      exportToMIDI(songInfo);
+      alert('MIDI data exported successfully!');
+    }
+  };
+
+  const handleExportMusicXML = () => {
+    exportToMusicXML(songInfo);
+    alert('MusicXML exported successfully!');
   };
 
   const tabs = [
     { id: 'piano', label: 'Piano', icon: Music },
     { id: 'guitar', label: 'Guitar', icon: Music2 },
-    { id: 'drums', label: 'Drums', icon: Drum }
+    { id: 'drums', label: 'Drums', icon: CircleDot }
   ];
 
   return (
@@ -56,6 +116,14 @@ function App() {
             </div>
           )}
         </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <div className="text-red-800 font-medium">Transcription Error</div>
+            <div className="text-red-700 text-sm mt-1">{error}</div>
+          </div>
+        )}
 
         {/* Transcription Status */}
         {isTranscribing && (
@@ -95,23 +163,33 @@ function App() {
 
             {/* Tab Content */}
             <div className="p-6">
-              {activeTab === 'piano' && <PianoTranscription songInfo={songInfo} />}
-              {activeTab === 'guitar' && <GuitarTranscription songInfo={songInfo} />}
-              {activeTab === 'drums' && <DrumTranscription songInfo={songInfo} />}
+              {activeTab === 'piano' && <PianoTranscription songInfo={songInfo} transcriptionData={transcriptionData} />}
+              {activeTab === 'guitar' && <GuitarTranscription songInfo={songInfo} transcriptionData={transcriptionData} />}
+              {activeTab === 'drums' && <DrumTranscription songInfo={songInfo} transcriptionData={transcriptionData} />}
             </div>
 
             {/* Export Options */}
             <div className="border-t border-gray-200 p-6 bg-gray-50">
               <div className="flex flex-wrap gap-3">
-                <button className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                <button 
+                  onClick={handleExportPDF}
+                  disabled={isExporting}
+                  className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   <Download className="w-4 h-4 mr-2" />
-                  Export PDF
+                  {isExporting ? 'Exporting...' : 'Export PDF'}
                 </button>
-                <button className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                <button 
+                  onClick={handleExportMIDI}
+                  className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
                   <Download className="w-4 h-4 mr-2" />
                   Export MIDI
                 </button>
-                <button className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+                <button 
+                  onClick={handleExportMusicXML}
+                  className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                >
                   <Download className="w-4 h-4 mr-2" />
                   Export MusicXML
                 </button>
